@@ -1,84 +1,67 @@
-name: Build ImmortalWrt-360T7-Full
+name: Build ImmortalWrt 360T7 MT7981
 on:
   push:
+    branches: [ main ]
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
     steps:
-      - name: Checkout
+      - name: Checkout source
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Install Dependencies
-        env:
-          DEBIAN_FRONTEND: noninteractive
+      - name: Install dependencies Ubuntu22.04
         run: |
           sudo apt update
-          sudo apt install -y build-essential flex bison gawk python3 python3-pip unzip libssl-dev git wget curl rsync
-          sudo apt clean
+          sudo apt install -y build-essential libncurses-dev gawk flex bison qemu-utils git wget curl unzip libssl-dev python3 python3-pip
+          sudo apt -y autoremove
+          sudo rm -rf /var/lib/apt/lists/*
 
-      - name: Prepare ImmortalWrt Source
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: ${{ runner.os }}-ccache-360T7-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-360T7-
+
+      - name: Config ccache
         run: |
-          git clone https://github.com/immortalwrt/immortalwrt.git --depth 1 -b openwrt-24.10 openwrt
-          cd openwrt
+          export CCACHE_DIR=${{ github.workspace }}/.ccache
+          ccache -M 10G
+          echo "CCACHE_DIR=${{ github.workspace }}/.ccache" >> $GITHUB_ENV
+
+      - name: Update feeds
+        run: |
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Add Feeds
+      - name: Write config by echo
         run: |
-          cd openwrt
-          echo "src-git istore https://github.com/istoreos/istoreos.git" >> feeds.conf.default
-          echo "src-git openclash https://github.com/vernesong/OpenClash.git;master" >> feeds.conf.default
-          ./scripts/feeds update istore openclash
-          ./scripts/feeds install -p istore luci-app-store
-          ./scripts/feeds install -p openclash luci-app-openclash
-
-      - name: Write Config
-        run: |
-          cd openwrt
-          echo 'CONFIG_TARGET_mediatek=y' > .config
-          echo 'CONFIG_TARGET_mediatek_mt7981=y' >> .config
-          echo 'CONFIG_TARGET_mediatek_mt7981_DEVICE_360T7=y' >> .config
-          echo 'CONFIG_BUSYBOX_CONFIG_FEATURE_SYSLOG_INFO=y' >> .config
-          echo 'CONFIG_PACKAGE_luci=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-base=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-compat=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-lib-ipkg=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-lib-jsonc=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-lib-nixio=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-mod-admin-full=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-theme-bootstrap=y' >> .config
-          echo 'CONFIG_PACKAGE_iStore=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-app-store=y' >> .config
-          echo 'CONFIG_PACKAGE_fullconenat-nft=y' >> .config
-          echo 'CONFIG_PACKAGE_firewall4=y' >> .config
-          echo 'CONFIG_PACKAGE_nftables=y' >> .config
-          echo 'CONFIG_PACKAGE_dnsmasq-full=y' >> .config
-          echo 'CONFIG_PACKAGE_ppp=y' >> .config
-          echo 'CONFIG_PACKAGE_mt76=y' >> .config
-          echo 'CONFIG_PACKAGE_kmod-mt76=y' >> .config
-          echo 'CONFIG_PACKAGE_kmod-nft-offload=y' >> .config
-          echo 'CONFIG_USE_APK=y' >> .config
-          echo 'CONFIG_PACKAGE_apk=y' >> .config
-          echo 'CONFIG_PACKAGE_automount=y' >> .config
-          echo 'CONFIG_PACKAGE_ntfs3=y' >> .config
-          echo 'CONFIG_PACKAGE_fitblk=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-app-openclash=y' >> .config
-          echo 'CONFIG_PACKAGE_luci-i18n-openclash-zh-cn=y' >> .config
-          echo 'CONFIG_TARGET_ROOTFS_SQUASHFS=y' >> .config
-          echo 'CONFIG_TARGET_ROOTFS_FACTORY=y' >> .config
-          echo 'CONFIG_TARGET_ROOTFS_SYSUPGRADE=y' >> .config
+          echo "CONFIG_TARGET_mediatek=y" > .config
+          echo "CONFIG_TARGET_mediatek_mt7981=y" >> .config
+          echo "CONFIG_TARGET_mediatek_mt7981_DEVICE_360T7=y" >> .config
+          echo "CONFIG_PACKAGE_luci=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
+          echo "CONFIG_PACKAGE_luci-app-store=y" >> .config
+          echo "CONFIG_PACKAGE_kmod-fullconenat=y" >> .config
           make defconfig
 
-      - name: Compile
+      - name: Compile firmware
         run: |
-          cd openwrt
-          make -j$(nproc) V=
+          make -j$(nproc) || exit 1
+
+      - name: List all bin files
+        run: |
+          ls -R .
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: 360T7-ImmortalWrt-24.10-iStore-OpenClash
-          path: openwrt/bin/targets/mediatek/mt7981/*.bin
+          name: 360T7-firmware
+          path: "**/*.bin"

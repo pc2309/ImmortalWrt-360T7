@@ -9,7 +9,7 @@ on:
         type: boolean
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     env:
       TZ: Asia/Shanghai
       REPO_URL: https://github.com/hanwckf/immortalwrt-mt798x.git

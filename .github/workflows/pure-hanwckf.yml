@@ -1,57 +1,80 @@
-name: Build ImmortalWrt Master 360T7 108M
+name: Build ImmortalWrt-360T7
 on:
+  push:
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-22.04
     steps:
-      - name: Initialization environment
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y build-essential flex bison git wget curl rsync libssl-dev python3 python3-pip python3-distutils unzip libncurses5-dev zlib1g-dev libelf-dev libudev-dev libdw-dev
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Clone ImmortalWrt Source master
+      - name: Install Dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          git clone https://github.com/immortalwrt/immortalwrt.git openwrt
-          cd openwrt
-          git checkout master
+          sudo apt update
+          sudo apt install -y build-essential flex bison gawk python3 python3-pip unzip libssl-dev git wget curl rsync
+          sudo apt clean
 
-      - name: Update feeds（只用官方自带feeds）
+      - name: Prepare ImmortalWrt Source
         run: |
+          git clone https://github.com/immortalwrt/immortalwrt.git --depth 1 -b openwrt-24.10 openwrt
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Generate .config【108M大分区｜MT闭源29dBm】
+      - name: Add iStore Feeds
         run: |
           cd openwrt
+          echo "src-git istore https://github.com/istoreos/istoreos.git" >> feeds.conf.default
+          ./scripts/feeds update istore
+          ./scripts/feeds install -a
+
+      - name: Write Config
+        run: |
+          cd openwrt
+          echo 'CONFIG_TARGET_mediatek=y' > .config
+          echo 'CONFIG_TARGET_mediatek_mt7981=y' >> .config
+          echo 'CONFIG_TARGET_mediatek_mt7981_DEVICE_360T7=y' >> .config
+          echo 'CONFIG_BUSYBOX_CONFIG_FEATURE_SYSLOG_INFO=y' >> .config
+          echo 'CONFIG_PACKAGE_luci=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-base=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-compat=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-i18n-base-zh-cn=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-lib-ipkg=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-lib-jsonc=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-lib-nixio=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-mod-admin-full=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-theme-bootstrap=y' >> .config
+          echo 'CONFIG_PACKAGE_iStore=y' >> .config
+          echo 'CONFIG_PACKAGE_luci-app-store=y' >> .config
+          echo 'CONFIG_PACKAGE_fullconenat-nft=y' >> .config
+          echo 'CONFIG_PACKAGE_firewall4=y' >> .config
+          echo 'CONFIG_PACKAGE_nftables=y' >> .config
+          echo 'CONFIG_PACKAGE_dnsmasq-full=y' >> .config
+          echo 'CONFIG_PACKAGE_ppp=y' >> .config
+          echo 'CONFIG_PACKAGE_mt76=y' >> .config
+          echo 'CONFIG_PACKAGE_kmod-mt76=y' >> .config
+          echo 'CONFIG_PACKAGE_kmod-nft-offload=y' >> .config
+          echo 'CONFIG_USE_APK=y' >> .config
+          echo 'CONFIG_PACKAGE_apk=y' >> .config
+          echo 'CONFIG_PACKAGE_automount=y' >> .config
+          echo 'CONFIG_PACKAGE_ntfs3=y' >> .config
+          echo 'CONFIG_PACKAGE_fitblk=y' >> .config
+          echo 'CONFIG_TARGET_ROOTFS_SQUASHFS=y' >> .config
+          echo 'CONFIG_TARGET_ROOTFS_FACTORY=y' >> .config
+          echo 'CONFIG_TARGET_ROOTFS_SYSUPGRADE=y' >> .config
           make defconfig
-          sed -i 's/CONFIG_TARGET_mediatek_mt7981=n/CONFIG_TARGET_mediatek_mt7981=y/' .config
-          sed -i 's/CONFIG_TARGET_mediatek_mt7981_DEVICE_360_t7=n/CONFIG_TARGET_mediatek_mt7981_DEVICE_360_t7=y/' .config
-          sed -i 's/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=100/' .config
-          sed -i 's/CONFIG_TARGET_UBOOT_SPL_SIZE=.*/CONFIG_TARGET_UBOOT_SPL_SIZE=2M/' .config
-          sed -i 's/CONFIG_PACKAGE_kmod-mt7981-open=n/CONFIG_PACKAGE_kmod-mt7981-open=n/' .config
-          sed -i 's/CONFIG_PACKAGE_kmod-mt7981-closed=n/CONFIG_PACKAGE_kmod-mt7981-closed=y/' .config
-          sed -i 's/CONFIG_MT7981_TX_POWER_24DBM=y/CONFIG_MT7981_TX_POWER_24DBM=n/' .config
-          sed -i 's/CONFIG_MT7981_TX_POWER_29DBM=n/CONFIG_MT7981_TX_POWER_29DBM=y/' .config
-          sed -i 's/CONFIG_PACKAGE_luci-app-openclash=n/CONFIG_PACKAGE_luci-app-openclash=y/' .config
-          sed -i 's/CONFIG_PACKAGE_luci-app-sqm=n/CONFIG_PACKAGE_luci-app-sqm=y/' .config
-          sed -i 's/CONFIG_PACKAGE_luci-app-tailscale=n/CONFIG_PACKAGE_luci-app-tailscale=y/' .config
-          make defconfig
 
-      - name: Download All Packages
+      - name: Compile
         run: |
           cd openwrt
-          make download -j$(nproc)
+          make -j$(nproc) V=
 
-      - name: Start Compile Firmware
-        run: |
-          cd openwrt
-          make -j$(nproc)
-
-      - name: Upload 108M Factory.bin
+      - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: 360T7-512M-108M-29dBm-FactoryBin
-          path: openwrt/bin/targets/mediatek/mt7981/*squashfs-factory.bin
+          name: 360T7-ImmortalWrt-24.10-iStore
+          path: openwrt/bin/targets/mediatek/mt7981/*.bin

@@ -17,14 +17,13 @@ jobs:
           cd openwrt
           git checkout master
 
-      - name: Add iStore feeds
+      - name: Update feeds（只用官方自带feeds）
         run: |
           cd openwrt
-          echo "src-git istore https://github.com/istoreos/istore-packages.git" >> feeds.conf.default
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Generate .config【108M大分区｜512M内存｜MT闭源29dBm】
+      - name: Generate .config【108M大分区｜MT闭源29dBm】
         run: |
           cd openwrt
           make defconfig
@@ -37,7 +36,6 @@ jobs:
           sed -i 's/CONFIG_MT7981_TX_POWER_24DBM=y/CONFIG_MT7981_TX_POWER_24DBM=n/' .config
           sed -i 's/CONFIG_MT7981_TX_POWER_29DBM=n/CONFIG_MT7981_TX_POWER_29DBM=y/' .config
           sed -i 's/CONFIG_PACKAGE_luci-app-openclash=n/CONFIG_PACKAGE_luci-app-openclash=y/' .config
-          sed -i 's/CONFIG_PACKAGE_luci-app-istorex=n/CONFIG_PACKAGE_luci-app-istorex=y/' .config
           sed -i 's/CONFIG_PACKAGE_luci-app-sqm=n/CONFIG_PACKAGE_luci-app-sqm=y/' .config
           sed -i 's/CONFIG_PACKAGE_luci-app-tailscale=n/CONFIG_PACKAGE_luci-app-tailscale=y/' .config
           make defconfig

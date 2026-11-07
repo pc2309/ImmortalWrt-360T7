@@ -1,79 +1,61 @@
-name: Build 360T7 hanwckf Custom
+name: Build ImmortalWrt 24.10 MT7981 360T7 512M 29dBm
 on:
   workflow_dispatch:
-    inputs:
-      clean:
-        description: 'Clean build'
-        required: false
-        default: false
-        type: boolean
+
 jobs:
   build:
     runs-on: ubuntu-22.04
-    env:
-      TZ: Asia/Shanghai
-      REPO_URL: https://github.com/hanwckf/immortalwrt-mt798x.git
-      REPO_BRANCH: openwrt-24.10
-      FEEDS_CONF: feeds.conf.default
-      CONFIG_FILE: .config
-      DIY_P1_SH: diy-part1.sh
-      DIY_P2_SH: diy-part2.sh
-      UPLOAD_BIN_DIR: false
-      UPLOAD_FIRMWARE: true
-      UPLOAD_RELEASE: true
     steps:
-      - name: Checkout
-        uses: actions/checkout@main
       - name: Initialization environment
-        env:
-          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo -E apt-get update -qq
-          sudo -E apt-get install -y -qq build-essential clang flex bison g++ gawk gcc-multilib g++-multilib gettext git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev file wget
-      - name: Clone ImmortalWrt source
+          sudo apt-get update -qq
+          sudo apt-get install -y build-essential flex bison git wget curl rsync libssl-dev python3 python3-pip python3-distutils unzip libncurses5-dev zlib1g-dev libelf-dev libudev-dev libdw-dev
+
+      - name: Clone ImmortalWrt Source & Checkout 24.10
         run: |
-          git clone --depth=1 --branch $REPO_BRANCH $REPO_URL immortalwrt
-          cd immortalwrt
-          git checkout $REPO_BRANCH
+          git clone https://github.com/immortalwrt/immortalwrt.git --depth 1 openwrt
+          cd openwrt
+          git checkout immortalwrt-24.10
+
       - name: Add iStore feeds
         run: |
-          cd immortalwrt
-          echo "src-git istore https://github.com/istoreos/istoreos-feeds.git;istore" >> feeds.conf.default
+          cd openwrt
+          echo "src-git istore https://github.com/istoreos/istore-packages.git" >> feeds.conf.default
           ./scripts/feeds update -a
           ./scripts/feeds install -a
-      - name: Patch 512M memory support
+
+      - name: Generate .config for MT7981 360T7 512M + 29dBm closed wifi
         run: |
-          cd immortalwrt
-          if [ -f target/linux/mediatek/dts/mt7981/qihoo_360t7.dts ]; then
-            sed -i 's/reg = <0x40000000 0x10000000>/reg = <0x40000000 0x20000000>/' target/linux/mediatek/dts/mt7981/qihoo_360t7.dts
-            echo "512M DTS patch applied"
-          fi
-      - name: Load config and add custom packages
-        run: |
-          cd immortalwrt
-          if [ -f ../6.6_pure.config ]; then
-            cp ../6.6_pure.config .config
-          fi
-          echo "CONFIG_PACKAGE_luci-app-mtwifi-cfg=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-turboacc-mtk=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-istore=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-istore-quickstart=y" >> .config
-          echo "CONFIG_PACKAGE_luci-app-openclash=y" >> .config
-          echo "CONFIG_PACKAGE_mt_wifi=y" >> .config
-          echo "CONFIG_PACKAGE_mt_wifi-firmware=y" >> .config
-      - name: Download packages
-        run: |
-          cd immortalwrt
+          cd openwrt
           make defconfig
-          make download -j$(nproc)
-      - name: Build firmware
+          sed -i 's/CONFIG_TARGET_mediatek_mt7981=n/CONFIG_TARGET_mediatek_mt7981=y/' .config
+          sed -i 's/CONFIG_TARGET_mediatek_mt7981_DEVICE_360_t7=n/CONFIG_TARGET_mediatek_mt7981_DEVICE_360_t7=y/' .config
+          # 512MB内存适配
+          sed -i 's/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=280/' .config
+          sed -i 's/CONFIG_TARGET_UBOOT_SPL_SIZE=.*/CONFIG_TARGET_UBOOT_SPL_SIZE=2M/' .config
+          # MT闭源WiFi驱动、29dBm功率
+          sed -i 's/CONFIG_PACKAGE_kmod-mt7981-open=n/CONFIG_PACKAGE_kmod-mt7981-open=n/' .config
+          sed -i 's/CONFIG_PACKAGE_kmod-mt7981-closed=n/CONFIG_PACKAGE_kmod-mt7981-closed=y/' .config
+          sed -i 's/CONFIG_MT7981_TX_POWER_24DBM=y/CONFIG_MT7981_TX_POWER_24DBM=n/' .config
+          sed -i 's/CONFIG_MT7981_TX_POWER_29DBM=n/CONFIG_MT7981_TX_POWER_29DBM=y/' .config
+          # 软件包
+          sed -i 's/CONFIG_PACKAGE_luci-app-openclash=n/CONFIG_PACKAGE_luci-app-openclash=y/' .config
+          sed -i 's/CONFIG_PACKAGE_luci-app-istorex=n/CONFIG_PACKAGE_luci-app-istorex=y/' .config
+          sed -i 's/CONFIG_PACKAGE_luci-app-sqm=n/CONFIG_PACKAGE_luci-app-sqm=y/' .config
+          make defconfig
+
+      - name: Download All Packages
         run: |
-          cd immortalwrt
-          make -j$(nproc) || make -j1 V=s
-      - name: Upload firmware
-        uses: actions/upload-artifact@main
+          cd openwrt
+          make download -j$(nproc)
+
+      - name: Start Compile Firmware
+        run: |
+          cd openwrt
+          make -j$(nproc)
+
+      - name: Upload Firmware Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          name: 360T7-hanwckf-custom
-          path: |
-            immortalwrt/bin/targets/mediatek/filogic/*.bin
-            immortalwrt/bin/targets/mediatek/filogic/*.sha256sums
+          name: ImmortalWrt-24.10-360T7-512M-29dBm
+          path: openwrt/bin/targets/mediatek/mt7981/

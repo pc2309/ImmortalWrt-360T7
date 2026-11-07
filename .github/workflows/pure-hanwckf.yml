@@ -1,4 +1,4 @@
-name: Build ImmortalWrt 24.10 MT7981 360T7 512M 29dBm
+name: Build ImmortalWrt Main 360T7 108M
 on:
   workflow_dispatch:
 
@@ -11,11 +11,11 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y build-essential flex bison git wget curl rsync libssl-dev python3 python3-pip python3-distutils unzip libncurses5-dev zlib1g-dev libelf-dev libudev-dev libdw-dev
 
-      - name: Clone ImmortalWrt Source & Checkout 24.10
+      - name: Clone ImmortalWrt Source main
         run: |
-          git clone https://github.com/immortalwrt/immortalwrt.git --depth 1 openwrt
+          git clone https://github.com/immortalwrt/immortalwrt.git openwrt
           cd openwrt
-          git checkout immortalwrt-24.10
+          git checkout main
 
       - name: Add iStore feeds
         run: |
@@ -24,24 +24,22 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Generate .config for MT7981 360T7 512M + 29dBm closed wifi
+      - name: Generate .config【108M大分区｜512M内存｜MT闭源29dBm】
         run: |
           cd openwrt
           make defconfig
           sed -i 's/CONFIG_TARGET_mediatek_mt7981=n/CONFIG_TARGET_mediatek_mt7981=y/' .config
           sed -i 's/CONFIG_TARGET_mediatek_mt7981_DEVICE_360_t7=n/CONFIG_TARGET_mediatek_mt7981_DEVICE_360_t7=y/' .config
-          # 512MB内存适配
-          sed -i 's/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=280/' .config
+          sed -i 's/CONFIG_TARGET_ROOTFS_PARTSIZE=.*/CONFIG_TARGET_ROOTFS_PARTSIZE=100/' .config
           sed -i 's/CONFIG_TARGET_UBOOT_SPL_SIZE=.*/CONFIG_TARGET_UBOOT_SPL_SIZE=2M/' .config
-          # MT闭源WiFi驱动、29dBm功率
           sed -i 's/CONFIG_PACKAGE_kmod-mt7981-open=n/CONFIG_PACKAGE_kmod-mt7981-open=n/' .config
           sed -i 's/CONFIG_PACKAGE_kmod-mt7981-closed=n/CONFIG_PACKAGE_kmod-mt7981-closed=y/' .config
           sed -i 's/CONFIG_MT7981_TX_POWER_24DBM=y/CONFIG_MT7981_TX_POWER_24DBM=n/' .config
           sed -i 's/CONFIG_MT7981_TX_POWER_29DBM=n/CONFIG_MT7981_TX_POWER_29DBM=y/' .config
-          # 软件包
           sed -i 's/CONFIG_PACKAGE_luci-app-openclash=n/CONFIG_PACKAGE_luci-app-openclash=y/' .config
           sed -i 's/CONFIG_PACKAGE_luci-app-istorex=n/CONFIG_PACKAGE_luci-app-istorex=y/' .config
           sed -i 's/CONFIG_PACKAGE_luci-app-sqm=n/CONFIG_PACKAGE_luci-app-sqm=y/' .config
+          sed -i 's/CONFIG_PACKAGE_luci-app-tailscale=n/CONFIG_PACKAGE_luci-app-tailscale=y/' .config
           make defconfig
 
       - name: Download All Packages
@@ -54,8 +52,8 @@ jobs:
           cd openwrt
           make -j$(nproc)
 
-      - name: Upload Firmware Artifacts
+      - name: Upload 108M Factory.bin
         uses: actions/upload-artifact@v4
         with:
-          name: ImmortalWrt-24.10-360T7-512M-29dBm
-          path: openwrt/bin/targets/mediatek/mt7981/
+          name: 360T7-512M-108M-29dBm-FactoryBin
+          path: openwrt/bin/targets/mediatek/mt7981/*squashfs-factory.bin
